@@ -69,7 +69,7 @@ func CDownload(dir string, url string) {
 			limit = 1
 		}
 	}
-	len_sub := length / limit // Bytes for each Go-routine
+	lenJunk := length / limit // Bytes for each Go-routine
 	diff := length % limit    //  the remaining for the last junk
 
 	//stat HELPER
@@ -91,8 +91,8 @@ func CDownload(dir string, url string) {
 
 		guard <- struct{}{} // add semaphore
 		wg.Add(1)
-		min := len_sub * i       // byte range
-		max := len_sub * (i + 1) // byte range
+		min := lenJunk * i       // byte range
+		max := lenJunk * (i + 1) // byte range
 
 		if i == limit-1 {
 			max += diff // Add the remaining bytes in the last request
@@ -110,7 +110,7 @@ func CDownload(dir string, url string) {
 			stats.Junk = i
 			client := &http.Client{}
 			req, _ := http.NewRequest("GET", url, nil)
-			range_header := "bytes=" + strconv.FormatInt(min, 10) + "-" + strconv.FormatInt(max-1, 10) // add header for junk size
+			range_header := "bytes=" + strconv.FormatInt(min, 10) + "-" + strconv.FormatInt(max, 10) // add header for junk size
 			req.Header.Add("Range", range_header)
 			resp, err := client.Do(req)
 
