@@ -21,7 +21,7 @@ type FileStats struct {
 	StartedAt       time.Time
 	Junk            int64
 	Parts           int
-	junkSize        int64
+	JunkSize        int64
 	ConcurrentParts int64
 	PercDone        float32
 	LastMeassured   int64
@@ -90,7 +90,68 @@ func CDownload(dir string, url string, options Options) {
 
 	//Init stats
 	stats := &FileStats{Transfered: 0, Filename: file, Parts: int(limit), StartedAt: time.Now(), Size: length,
-		TargetDirectory: filepath, ConcurrentParts: options.ConcurrentParts, junkSize: options.JunkSize, CompletedJunks: int64(0)}
+		TargetDirectory: filepath, ConcurrentParts: options.ConcurrentParts, JunkSize: options.JunkSize, CompletedJunks: int64(0)}
+
+	//stats:
+	type Result struct {
+		bytes *[]byte
+		id    int64
+	}
+	startTransaction := make(chan Result)
+	endTransaction := make(chan int64) // TODO can be max cocnurrent
+	dieStats := make(chan bool)
+	defer func() {
+		dieStats <- true
+	}()
+	go func(f *FileStats) {
+		holder := map[int64]Result{}
+		die := false
+		for {
+			//TODO select incomming bytes
+
+			select {
+			case reader := <-startTransaction:
+				holder[reader.id] = reader
+			case i := <-endTransaction:
+				f.Transfered = f.Transfered + int64(len(*holder[i].bytes))
+				delete(holder, i)
+			case <-time.After(time.Second * 1):
+				divider := ((time.Now().UnixMilli() / 1000) - f.StartedAt.Unix())
+				if divider == 0 {
+					divider = 1
+				}
+				counter := 0
+				for _, v := range holder {
+					counter = counter + len(*v.bytes)
+				}
+
+				transveredSum := int64(counter) + f.Transfered
+				f.BytesPerSecond = float32(int64(transveredSum)) / float32(divider) // sums the whole time ... better would be to meassure each frame
+				f.PercDone = float32(transveredSum) / float32(f.Size)
+				//fmt.Printf("%+v\n", f)
+				f.LastMeassured = time.Now().UnixNano()
+				fmt.Println("StartedAt:", f.StartedAt)
+				fmt.Println("Filename:", f.Filename, "junkssize:", f.JunkSize)
+				fmt.Printf("Junks: %v / %v \n", f.CompletedJunks, f.Parts)
+				fmt.Printf("Progress: %v / %v\n", transveredSum, f.Size)
+				fmt.Printf("Percent completed: %.2f\n", f.PercDone*100)
+				fmt.Printf("Bps: %.2f \n", f.BytesPerSecond)
+
+			case die = <-dieStats:
+			}
+
+			if die {
+				close(dieStats)
+				close(startTransaction)
+				close(endTransaction)
+				break
+			}
+		}
+
+	}(stats)
+
+	//end stats
+
 	for i := int64(0); i < limit; i++ {
 
 		guard <- struct{}{} // add semaphore
@@ -137,12 +198,15 @@ func CDownload(dir string, url string, options Options) {
 				}
 			} else { // download the junks of the file
 				var reader []byte
-				reader, _ = ioutil.ReadAll(resp.Body)
-				stats.Transfered = stats.Transfered + int64(len(reader)) // possible race bugs
 				if options.UseStats {
-					go doStats(stats, true)
+					//go doStats(stats, true)
+					startTransaction <- Result{id: i, bytes: &reader} // must be made better :)
 				}
+				reader, _ = ioutil.ReadAll(resp.Body)
+				//stats.Transfered = stats.Transfered + int64(len(reader)) // possible race bugs
+
 				_, err = f.WriteAt(reader, int64(min))
+				endTransaction <- i
 				if err != nil {
 					fmt.Println(err)
 				}
@@ -151,9 +215,10 @@ func CDownload(dir string, url string, options Options) {
 		}(min, max, i)
 	}
 	wg.Wait()
+
 }
 
-// TODO write a stat struct and pass as channel
+// Single junk stats, TODO can be written quite better
 func doStats(f *FileStats, hasJunks bool) {
 	//fmt.Println(f)
 	divider := ((time.Now().UnixMilli() / 1000) - f.StartedAt.Unix())
@@ -162,6 +227,6 @@ func doStats(f *FileStats, hasJunks bool) {
 	}
 	f.BytesPerSecond = float32(int64(f.Transfered)) / float32(divider) // quite naive but can work,also dosn't meassure single junks
 	f.PercDone = float32(f.Transfered) / float32(f.Size)
-	fmt.Printf("%+v\n", f)
+	//fmt.Printf("%+v\n", f)
 	f.LastMeassured = time.Now().UnixNano()
 }
