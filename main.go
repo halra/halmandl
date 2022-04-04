@@ -111,7 +111,7 @@ func CDownload(dir string, url string, options Options) {
 				wg.Done()
 			}(&wg)
 
-			stats.Junk = i
+			stats.Junk = i // possible race bugs
 			client := &http.Client{}
 			req, _ := http.NewRequest("GET", url, nil)
 			if limit > 1 { // only had
@@ -138,7 +138,7 @@ func CDownload(dir string, url string, options Options) {
 			} else { // download the junks of the file
 				var reader []byte
 				reader, _ = ioutil.ReadAll(resp.Body)
-				stats.Transfered = stats.Transfered + int64(len(reader))
+				stats.Transfered = stats.Transfered + int64(len(reader)) // possible race bugs
 				if options.UseStats {
 					go doStats(stats, true)
 				}
@@ -160,7 +160,7 @@ func doStats(f *FileStats, hasJunks bool) {
 	if divider == 0 {
 		divider = 1
 	}
-	f.BytesPerSecond = float32(int64(f.junkSize)) / float32(divider)
+	f.BytesPerSecond = float32(int64(f.Transfered)) / float32(divider) // quite naive but can work,also dosn't meassure single junks
 	f.PercDone = float32(f.Transfered) / float32(f.Size)
 	fmt.Printf("%+v\n", f)
 	f.LastMeassured = time.Now().UnixNano()
