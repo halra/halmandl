@@ -132,12 +132,14 @@ func CDownload(dir string, url string, options Options) {
 				f.PercDone = float32(transveredSum) / float32(f.Size)
 				//fmt.Printf("%+v\n", f)
 				f.LastMeassured = time.Now().UnixNano()
-				fmt.Println("StartedAt:", f.StartedAt)
-				fmt.Println("Filename:", f.Filename, "junkssize:", f.JunkSize)
-				fmt.Printf("Junks: %v / %v \n", f.CompletedJunks, f.Parts)
-				fmt.Printf("Progress: %v / %v\n", transveredSum, f.Size)
-				fmt.Printf("Percent completed: %.2f\n", f.PercDone*100)
-				fmt.Printf("Bps: %.2f \n", f.BytesPerSecond)
+				//fmt.Print("\rStartedAt:", f.StartedAt)
+				//fmt.Printf("\rFilename: %s junkssize: %d \t", f.Filename, f.JunkSize)
+				//fmt.Printf("\rJunks: %v / %v \t", f.CompletedJunks, f.Parts)
+				//fmt.Printf("\rProgress: %v / %v\t", transveredSum, f.Size)
+				//fmt.Printf("\rPercent completed: %.2f\t", f.PercDone*100)
+				//fmt.Printf("\rBps: %.2f \t", f.BytesPerSecond)
+				fmt.Printf("\rFilename: %v p: %v / %v c: %.2f %% Junks: %v / %v Bps: %v \t", f.Filename,
+					transveredSum, f.Size, f.PercDone*100, f.CompletedJunks, f.Parts, f.BytesPerSecond)
 
 			case die = <-dieStats:
 			}
