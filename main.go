@@ -103,6 +103,8 @@ func CDownload(dir string, url string, options Options) {
 	defer func() {
 		dieStats <- true
 	}()
+
+	//Start stats listener
 	go func(f *FileStats) {
 		holder := map[int64]Result{}
 		die := false
@@ -165,6 +167,7 @@ func CDownload(dir string, url string, options Options) {
 
 		go func(min int64, max int64, i int64) {
 			defer func(guard chan struct{}) {
+				stats.CompletedJunks += 1
 				<-guard // release semaphore
 			}(guard)
 			defer func(wg *sync.WaitGroup) {
@@ -188,14 +191,9 @@ func CDownload(dir string, url string, options Options) {
 			defer resp.Body.Close()
 
 			reader := bytes.NewBuffer(nil)
-			//var reader []byte
-			//tmpFile, _ := os.Create(path.Join(dir, strconv.FormatInt(i, 10)))
 			if options.UseStats {
-				//go doStats(stats, true)
-				startTransaction <- Result{id: i, bytes: reader} // must be made better :)
+				startTransaction <- Result{id: i, bytes: reader}
 			}
-			//reader, _ = ioutil.ReadAll(resp.Body)
-			//stats.Transfered = stats.Transfered + int64(len(reader)) // possible race bugs
 			_, err = io.Copy(reader, resp.Body)
 			_, err = f.WriteAt(reader.Bytes(), int64(min))
 			endTransaction <- i
@@ -207,17 +205,4 @@ func CDownload(dir string, url string, options Options) {
 	}
 	wg.Wait()
 
-}
-
-// Single junk stats, TODO can be written quite better
-func doStats(f *FileStats, hasJunks bool) {
-	//fmt.Println(f)
-	divider := ((time.Now().UnixMilli() / 1000) - f.StartedAt.Unix())
-	if divider == 0 {
-		divider = 1
-	}
-	f.BytesPerSecond = float32(int64(f.Transfered)) / float32(divider) // quite naive but can work,also dosn't meassure single junks
-	f.PercDone = float32(f.Transfered) / float32(f.Size)
-	//fmt.Printf("%+v\n", f)
-	f.LastMeassured = time.Now().UnixNano()
 }
