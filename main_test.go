@@ -3,7 +3,6 @@ package halmandl
 import (
 	"crypto/sha1"
 	"encoding/hex"
-	"fmt"
 	"io/ioutil"
 	"math/rand"
 	"net/http"
@@ -18,34 +17,29 @@ var mockString string
 
 func TestCDownloadWithRange(t *testing.T) {
 
-	op := Options{JunkSize: 4194304, ConcurrentParts: 10, UseStats: true}
+	op := Options{JunkSize: 4194300, ConcurrentParts: 10, UseStats: true}
 
 	mockString = RandStringRunes(123456789)
 	origHash := getSha1([]byte(mockString))
-	fmt.Println(origHash)
-	CDownload("/", testServer.URL+"/foo.txt", op)
-	data, _ := ioutil.ReadFile("/\\foo.txt")
+	CDownload("./", testServer.URL+"/f1.txt", op)
+	data, _ := ioutil.ReadFile("./f1.txt")
 	doHash := getSha1(data)
-	fmt.Println(doHash)
-	if !strings.EqualFold(origHash, doHash) {
-		t.Logf("TestCDownloadWithRange failed\n")
+	if origHash != doHash {
+		t.Logf("TestCDownloadWithRange failed with missmatched hash\n")
 		t.Fail()
 	}
 }
 
 func TestCDownloadWithRangeBrokenServer(t *testing.T) {
 
-	op := Options{JunkSize: 4194304, ConcurrentParts: 10, UseStats: true}
-
+	op := Options{JunkSize: 4194303, ConcurrentParts: 10, UseStats: true}
 	mockString = RandStringRunes(123456789)
 	origHash := getSha1([]byte(mockString))
-	fmt.Println(origHash)
-	CDownload("/", testServerBroken.URL+"/foo2.txt", op)
-	data, _ := ioutil.ReadFile("/\\foo2.txt")
+	CDownload("./", testServerBroken.URL+"/f2.txt", op)
+	data, _ := ioutil.ReadFile("./f2.txt")
 	doHash := getSha1(data)
-	fmt.Println(doHash)
-	if strings.EqualFold(origHash, doHash) {
-		t.Logf("TestCDownloadWithRange failed\n")
+	if origHash == doHash {
+		t.Logf("TestCDownloadWithRangeBrokenServer failed with matching hash\n")
 		t.Fail()
 	}
 }
@@ -54,18 +48,29 @@ func TestCDownloadNoRange(t *testing.T) {
 	op := Options{JunkSize: 5, ConcurrentParts: 5, UseStats: true}
 	mockString = RandStringRunes(123456789)
 	origHash := getSha1([]byte(mockString))
-	fmt.Println(origHash)
-	CDownload("/", testServerNoRange.URL+"/bar.txt", op)
-	data, _ := ioutil.ReadFile("/\\bar.txt")
+	CDownload("./", testServerNoRange.URL+"/f3.txt", op)
+	data, _ := ioutil.ReadFile("./f3.txt")
 	doHash := getSha1(data)
-	fmt.Println(doHash)
+	if origHash != doHash {
+		t.Logf("TestCDownloadWithRange failed\n")
+		t.Fail()
+	}
 }
 
 func TestCDownloadSmallFiles(t *testing.T) {
 	op := Options{JunkSize: 5, ConcurrentParts: 5, UseStats: true}
 	mockString = RandStringRunes(1)
-	CDownload("/", testServer.URL+"/foo1.txt", op)
+	origHash := getSha1([]byte(mockString))
+	CDownload("./", testServer.URL+"/f4.txt", op)
+	data, _ := ioutil.ReadFile("./f4.txt")
+	doHash := getSha1(data)
+	if origHash != doHash {
+		t.Logf("TestCDownloadWithRangeBrokenServer failed with missmatched hash\n")
+		t.Fail()
+	}
 }
+
+//Test servers
 
 var testServer = httptest.NewServer(http.HandlerFunc(func(res http.ResponseWriter, req *http.Request) {
 	ra := req.Header.Get("Range")

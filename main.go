@@ -67,13 +67,12 @@ func CDownload(dir string, url string, options Options) {
 	//TODO some servers wont respond here, we could peek with a range ret to read the headers
 	res, err := http.Head(url) // fetch required headers, we decide on the header if we use junks
 	if err == nil {            // Only do if header is present
-		//fmt.Println(err)
 		contentLengthHeader := res.Header.Get("Content-Length")
 		if contentLengthHeader != "" {
 			length, _ = strconv.ParseInt(res.Header.Get("Content-Length"), 10, 64)
 		}
 		acceptRange := res.Header.Get("Accept-Ranges") // check if we can use a concurrent strategie
-		fmt.Println("Accept-Ranges", acceptRange)
+		//fmt.Println("Accept-Ranges", acceptRange)
 		if strings.Contains(acceptRange, "bytes") {
 			limit = length / int64(options.JunkSize) // split in junks of n bytes
 			if limit == 0 {                          // handle small files, files < junksize
@@ -109,8 +108,6 @@ func CDownload(dir string, url string, options Options) {
 		holder := map[int64]Result{}
 		die := false
 		for {
-			//TODO select incomming bytes
-
 			select {
 			case reader := <-startTransaction:
 				holder[reader.id] = reader
@@ -130,20 +127,11 @@ func CDownload(dir string, url string, options Options) {
 				transveredSum := int64(counter) + f.Transfered
 				f.BytesPerSecond = float32(int64(transveredSum)) / float32(divider) // sums the whole time ... better would be to meassure each frame
 				f.PercDone = float32(transveredSum) / float32(f.Size)
-				//fmt.Printf("%+v\n", f)
 				f.LastMeassured = time.Now().UnixNano()
-				//fmt.Print("\rStartedAt:", f.StartedAt)
-				//fmt.Printf("\rFilename: %s junkssize: %d \t", f.Filename, f.JunkSize)
-				//fmt.Printf("\rJunks: %v / %v \t", f.CompletedJunks, f.Parts)
-				//fmt.Printf("\rProgress: %v / %v\t", transveredSum, f.Size)
-				//fmt.Printf("\rPercent completed: %.2f\t", f.PercDone*100)
-				//fmt.Printf("\rBps: %.2f \t", f.BytesPerSecond)
-				fmt.Printf("\rFilename: %v p: %v / %v c: %.2f %% Junks: %v / %v Bps: %v \t", f.Filename,
+				fmt.Printf("\rFilename: %v p: %v / %v c: %.2f %% Junks: %v / %v Bps: %v                               ", f.Filename,
 					transveredSum, f.Size, f.PercDone*100, f.CompletedJunks, f.Parts, f.BytesPerSecond)
-
 			case die = <-dieStats:
 			}
-
 			if die {
 				close(dieStats)
 				close(startTransaction)
