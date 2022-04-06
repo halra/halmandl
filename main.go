@@ -1,9 +1,9 @@
 package halmandl
 
 import (
+	"bytes"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"os"
 	"path"
@@ -94,7 +94,7 @@ func CDownload(dir string, url string, options Options) {
 
 	//stats:
 	type Result struct {
-		bytes *[]byte
+		bytes *bytes.Buffer
 		id    int64
 	}
 	startTransaction := make(chan Result)
@@ -113,7 +113,7 @@ func CDownload(dir string, url string, options Options) {
 			case reader := <-startTransaction:
 				holder[reader.id] = reader
 			case i := <-endTransaction:
-				f.Transfered = f.Transfered + int64(len(*holder[i].bytes))
+				f.Transfered = f.Transfered + int64(holder[i].bytes.Len())
 				delete(holder, i)
 			case <-time.After(time.Second * 1):
 				divider := ((time.Now().UnixMilli() / 1000) - f.StartedAt.Unix())
@@ -122,7 +122,7 @@ func CDownload(dir string, url string, options Options) {
 				}
 				counter := 0
 				for _, v := range holder {
-					counter = counter + len(*v.bytes)
+					counter = counter + v.bytes.Len()
 				}
 
 				transveredSum := int64(counter) + f.Transfered
@@ -187,29 +187,20 @@ func CDownload(dir string, url string, options Options) {
 
 			defer resp.Body.Close()
 
-			//just download normaly
-			if limit == 1 {
-				if options.UseStats {
-					go doStats(stats, false)
-				}
-				_, err = io.Copy(f, resp.Body)
-				if err != nil {
-					fmt.Println(err)
-				}
-			} else { // download the junks of the file
-				var reader []byte
-				if options.UseStats {
-					//go doStats(stats, true)
-					startTransaction <- Result{id: i, bytes: &reader} // must be made better :)
-				}
-				reader, _ = ioutil.ReadAll(resp.Body)
-				//stats.Transfered = stats.Transfered + int64(len(reader)) // possible race bugs
-
-				_, err = f.WriteAt(reader, int64(min))
-				endTransaction <- i
-				if err != nil {
-					fmt.Println(err)
-				}
+			reader := bytes.NewBuffer(nil)
+			//var reader []byte
+			//tmpFile, _ := os.Create(path.Join(dir, strconv.FormatInt(i, 10)))
+			if options.UseStats {
+				//go doStats(stats, true)
+				startTransaction <- Result{id: i, bytes: reader} // must be made better :)
+			}
+			//reader, _ = ioutil.ReadAll(resp.Body)
+			//stats.Transfered = stats.Transfered + int64(len(reader)) // possible race bugs
+			_, err = io.Copy(reader, resp.Body)
+			_, err = f.WriteAt(reader.Bytes(), int64(min))
+			endTransaction <- i
+			if err != nil {
+				fmt.Println(err)
 			}
 
 		}(min, max, i)
