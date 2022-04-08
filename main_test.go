@@ -19,9 +19,12 @@ func TestCDownloadWithRange(t *testing.T) {
 
 	op := Options{JunkSize: 4194300, ConcurrentParts: 10, UseStats: true}
 
-	mockString = RandStringRunes(123456789)
+	if mockString == "" {
+		mockString = RandStringRunes(123456789)
+	}
+
 	origHash := getSha1([]byte(mockString))
-	CDownload("./", testServer.URL+"/f1.txt", op)
+	Download("./", testServer.URL+"/f1.txt", op)
 	data, _ := ioutil.ReadFile("./f1.txt")
 	doHash := getSha1(data)
 	if origHash != doHash {
@@ -31,24 +34,25 @@ func TestCDownloadWithRange(t *testing.T) {
 }
 
 func TestCDownloadWithRangeBrokenServer(t *testing.T) {
-
-	op := Options{JunkSize: 4194303, ConcurrentParts: 10, UseStats: true}
-	mockString = RandStringRunes(123456789)
+	if mockString == "" {
+		mockString = RandStringRunes(123456789)
+	}
+	op := Options{JunkSize: 219400, ConcurrentParts: 10, UseStats: true}
 	origHash := getSha1([]byte(mockString))
-	CDownload("./", testServerBroken.URL+"/f2.txt", op)
+	Download("./", testServerBroken.URL+"/f2.txt", op)
 	data, _ := ioutil.ReadFile("./f2.txt")
 	doHash := getSha1(data)
-	if origHash == doHash {
+	if origHash != doHash {
 		t.Logf("TestCDownloadWithRangeBrokenServer failed with matching hash\n")
 		t.Fail()
 	}
 }
 
 func TestCDownloadNoRange(t *testing.T) {
-	op := Options{JunkSize: 5, ConcurrentParts: 5, UseStats: true}
+	op := Options{JunkSize: 4194300, ConcurrentParts: 5, UseStats: true}
 	mockString = RandStringRunes(123456789)
 	origHash := getSha1([]byte(mockString))
-	CDownload("./", testServerNoRange.URL+"/f3.txt", op)
+	Download("./", testServerNoRange.URL+"/f3.txt", op)
 	data, _ := ioutil.ReadFile("./f3.txt")
 	doHash := getSha1(data)
 	if origHash != doHash {
@@ -61,7 +65,7 @@ func TestCDownloadSmallFiles(t *testing.T) {
 	op := Options{JunkSize: 5, ConcurrentParts: 5, UseStats: true}
 	mockString = RandStringRunes(1)
 	origHash := getSha1([]byte(mockString))
-	CDownload("./", testServer.URL+"/f4.txt", op)
+	Download("./", testServer.URL+"/f4.txt", op)
 	data, _ := ioutil.ReadFile("./f4.txt")
 	doHash := getSha1(data)
 	if origHash != doHash {
@@ -96,9 +100,13 @@ var testServerBroken = httptest.NewServer(http.HandlerFunc(func(res http.Respons
 	res.Header().Add("Content-Length", strconv.Itoa(len(mockString)))
 	res.Header().Add("Accept-Ranges", "bytes")
 
+	min := 0
+	max := 100
+	rand := rand.Intn(max-min) + min
 	if len(splitted) == 2 {
 		min, _ := strconv.ParseInt(splitted[0], 10, 64)
-		if min > 4194304 && min < 4194304*3 {
+		if rand > 50 {
+			//fmt.Println("rand made dl BROKEN")
 			return
 		}
 		max, _ := strconv.ParseInt(splitted[1], 10, 64)

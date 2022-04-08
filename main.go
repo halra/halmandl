@@ -2,8 +2,10 @@ package halmandl
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"net/http"
 	"os"
 	"path"
@@ -12,6 +14,23 @@ import (
 	"sync"
 	"time"
 )
+
+type Parts struct {
+	Min int64
+	Max int64
+	Idx int64
+}
+
+type Helper struct {
+	Parts        []Parts
+	Comleted     []int64
+	Failed       []int64
+	AllComplete  bool
+	PartsLen     int64
+	CompletedSum int64
+	FailedSum    int64
+	Options      Options
+}
 
 type FileStats struct {
 	Transfered      int64
@@ -35,14 +54,32 @@ type Options struct {
 	UseStats        bool
 }
 
-func CDownload(dir string, url string, options Options) {
+func Download(dir string, url string, options Options) {
+	//TODO read file and set conf from file if exists
+	//D.h. read conf und setzt options anhand dieser
+
+	maxTries := 10
+	for maxTries > 0 {
+		if CDownload(dir, url, options) {
+			return
+		}
+		maxTries -= 1
+	}
+
+}
+
+func DownloadStandard(dir string, url string) {
+
+}
+
+func CDownload(dir string, url string, options Options) bool {
 
 	//Params
 	if options.ConcurrentParts == 0 {
-		options.ConcurrentParts = int64(6) // allow big files ...
+		options.ConcurrentParts = int64(6) // TODO limit this
 	}
-	if options.JunkSize == 0 {
-		options.JunkSize = int64(4194304) // allow big files ...
+	if options.JunkSize < 5000000 { // min of 500kb
+		options.JunkSize = int64(4194304) // TODO limit this to min of 1 Mb or something
 	}
 	//End Params
 
@@ -56,12 +93,29 @@ func CDownload(dir string, url string, options Options) {
 		fmt.Println(err)
 	}
 
-	f, err := os.Create(filepath) // create the file
+	//create downloadfile
+	f, err := os.OpenFile(filepath, os.O_RDWR|os.O_CREATE, 0666)
 	if err != nil {
 		fmt.Println(err)
-		return
+		return false
 	}
 	defer f.Close()
+
+	//Load the config file and resume the download if we already have parts
+	filewatcherFilename := filepath + "halmandl"
+	fileWatcherFile, _ := os.OpenFile(filewatcherFilename, os.O_RDWR|os.O_CREATE, 0666)
+	defer fileWatcherFile.Close()
+	jsonParser := json.NewDecoder(fileWatcherFile)
+
+	fileWatcher := Helper{}
+	//Set values from last dl if we find any
+	if err = jsonParser.Decode(&fileWatcher); err != nil {
+		fileWatcher.Options = options
+	} else {
+		options = fileWatcher.Options
+	}
+	//writeFileHelperToDir(fileWatcher, filewatcherFilename)
+
 	length := int64(1)
 	limit := int64(1)
 	//TODO some servers wont respond here, we could peek with a range ret to read the headers
@@ -80,6 +134,13 @@ func CDownload(dir string, url string, options Options) {
 			}
 		}
 	}
+	//Fill structior if nil
+	if fileWatcher.Parts == nil {
+		fileWatcher.Parts = make([]Parts, limit)
+		fileWatcher.Comleted = make([]int64, limit)
+		fileWatcher.Failed = make([]int64, limit)
+	}
+
 	lenJunk := length / limit                             // Bytes for each Go-routine
 	diff := length % limit                                //  the remaining for the last junk
 	guard := make(chan struct{}, options.ConcurrentParts) // semaphore for concurrent requests
@@ -112,7 +173,9 @@ func CDownload(dir string, url string, options Options) {
 			case reader := <-startTransaction:
 				holder[reader.id] = reader
 			case i := <-endTransaction:
-				f.Transfered = f.Transfered + int64(holder[i].bytes.Len())
+				if holder[i].bytes != nil {
+					f.Transfered = f.Transfered + int64(holder[i].bytes.Len())
+				}
 				delete(holder, i)
 			case <-time.After(time.Second * 1):
 				divider := ((time.Now().UnixMilli() / 1000) - f.StartedAt.Unix())
@@ -145,14 +208,36 @@ func CDownload(dir string, url string, options Options) {
 	//end stats
 
 	for i := int64(0); i < limit; i++ {
-
-		guard <- struct{}{} // add semaphore
-		wg.Add(1)
+		if fileWatcher.Comleted[i] == 1 {
+			continue
+		}
 		min := lenJunk * i       // byte range
 		max := lenJunk * (i + 1) // byte range
 
 		if i == limit-1 {
 			max += diff // Add the remaining bytes in the last request
+		}
+		fileWatcher.Parts[i].Min = min
+		fileWatcher.Parts[i].Max = max
+		fileWatcher.Parts[i].Idx = i
+	}
+
+	defer func() {
+		// release wg semaphore
+		writeFileHelperToDir(fileWatcher, filewatcherFilename)
+	}()
+
+	for j, p := range fileWatcher.Parts {
+
+		guard <- struct{}{} // add semaphore
+		wg.Add(1)
+		min := p.Min
+		max := p.Max
+
+		if fileWatcher.Comleted[fileWatcher.Parts[j].Idx] == 1 {
+			wg.Done()
+			<-guard
+			continue
 		}
 
 		go func(min int64, max int64, i int64) {
@@ -162,6 +247,8 @@ func CDownload(dir string, url string, options Options) {
 			}(guard)
 			defer func(wg *sync.WaitGroup) {
 				// release wg semaphore
+				fileWatcher.PartsLen = int64(len(fileWatcher.Parts))
+				writeFileHelperToDir(fileWatcher, filewatcherFilename)
 				wg.Done()
 			}(&wg)
 
@@ -185,14 +272,38 @@ func CDownload(dir string, url string, options Options) {
 				startTransaction <- Result{id: i, bytes: reader}
 			}
 			_, err = io.Copy(reader, resp.Body)
-			_, err = f.WriteAt(reader.Bytes(), int64(min))
+			written, err := f.WriteAt(reader.Bytes(), int64(min))
 			endTransaction <- i
-			if err != nil {
-				fmt.Println(err)
+			if err != nil || written == 0 {
+				fileWatcher.Failed[i] = 1
+				fileWatcher.FailedSum += 1
+			} else {
+				fileWatcher.Comleted[i] = 1
+				fileWatcher.CompletedSum += 1
 			}
+			//remove(leftParts, i)
 
-		}(min, max, i)
+		}(min, max, fileWatcher.Parts[j].Idx)
+
 	}
 	wg.Wait()
 
+	for i := 0; i < len(fileWatcher.Parts); i++ {
+		if fileWatcher.Comleted[i] == int64(0) {
+			return false
+		}
+	}
+
+	fileWatcher.AllComplete = true
+	return fileWatcher.AllComplete
+
+}
+
+func remove(slice []Parts, s int64) []Parts {
+	return append(slice[:s], slice[s+1:]...)
+}
+
+func writeFileHelperToDir(data Helper, path string) {
+	file, _ := json.MarshalIndent(data, "", " ")
+	_ = ioutil.WriteFile(path, file, 0644)
 }
