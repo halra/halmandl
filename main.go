@@ -222,11 +222,6 @@ func CDownload(dir string, url string, options Options) bool {
 		fileWatcher.Parts[i].Idx = i
 	}
 
-	defer func() {
-		// release wg semaphore
-		writeFileHelperToDir(fileWatcher, filewatcherFilename)
-	}()
-
 	for j, p := range fileWatcher.Parts {
 
 		guard <- struct{}{} // add semaphore
@@ -259,7 +254,9 @@ func CDownload(dir string, url string, options Options) bool {
 				rangeHeader := "bytes=" + strconv.FormatInt(min, 10) + "-" + strconv.FormatInt(max, 10) // add header for junk size
 				req.Header.Add("Range", rangeHeader)
 			}
-			resp, err := client.Do(req)
+			resp, err := client.Do(req) //TODO check response status
+
+			//fmt.Println(resp.StatusCode)
 
 			if err != nil {
 				fmt.Println(err)
@@ -290,13 +287,15 @@ func CDownload(dir string, url string, options Options) bool {
 
 	for i := 0; i < len(fileWatcher.Parts); i++ {
 		if fileWatcher.Comleted[i] == int64(0) {
+			writeFileHelperToDir(fileWatcher, filewatcherFilename)
 			return false
 		}
 	}
 
 	fileWatcher.AllComplete = true
+	// release wg semaphore
+	writeFileHelperToDir(fileWatcher, filewatcherFilename)
 	return fileWatcher.AllComplete
-
 }
 
 func remove(slice []Parts, s int64) []Parts {
