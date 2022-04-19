@@ -52,20 +52,17 @@ type Options struct {
 	JunkSize        int64
 	ConcurrentParts int64
 	UseStats        bool
+	MaxTries        int
 }
 
 func Download(dir string, url string, options Options) {
-	//TODO read file and set conf from file if exists
-	//D.h. read conf und setzt options anhand dieser
-
-	maxTries := 10
+	maxTries := max(10, int64(options.MaxTries))
 	for maxTries > 0 {
 		if CDownload(dir, url, options) {
 			return
 		}
 		maxTries -= 1
 	}
-
 }
 
 func DownloadStandard(dir string, url string) {
@@ -75,12 +72,8 @@ func DownloadStandard(dir string, url string) {
 func CDownload(dir string, url string, options Options) bool {
 
 	//Params
-	if options.ConcurrentParts == 0 {
-		options.ConcurrentParts = int64(6) // TODO limit this
-	}
-	if options.JunkSize < 5000000 { // min of 500kb
-		options.JunkSize = int64(4194304) // TODO limit this to min of 1 Mb or something
-	}
+	options.ConcurrentParts = max(1, options.ConcurrentParts)
+	options.JunkSize = max(4194304, options.JunkSize)
 	//End Params
 
 	var wg sync.WaitGroup
@@ -118,7 +111,6 @@ func CDownload(dir string, url string, options Options) bool {
 
 	length := int64(1)
 	limit := int64(1)
-	//TODO some servers wont respond here, we could peek with a range ret to read the headers
 	res, err := http.Head(url) // fetch required headers, we decide on the header if we use junks
 	if err == nil {            // Only do if header is present
 		contentLengthHeader := res.Header.Get("Content-Length")
@@ -247,22 +239,26 @@ func CDownload(dir string, url string, options Options) bool {
 				wg.Done()
 			}(&wg)
 
-			stats.Junk = i // possible race bugs
+			stats.Junk = i
 			client := &http.Client{}
 			req, _ := http.NewRequest("GET", url, nil)
-			if limit > 1 { // only had
+			if limit > 1 {
 				rangeHeader := "bytes=" + strconv.FormatInt(min, 10) + "-" + strconv.FormatInt(max, 10) // add header for junk size
 				req.Header.Add("Range", rangeHeader)
 			}
-			resp, err := client.Do(req) //TODO check response status
-
-			//fmt.Println(resp.StatusCode)
-
+			resp, err := client.Do(req)
 			if err != nil {
 				fmt.Println(err)
 			}
-
 			defer resp.Body.Close()
+
+			if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+				fileWatcher.Failed[i] = 1
+				fileWatcher.FailedSum += 1
+				return
+			}
+
+			//fmt.Println(resp.StatusCode)
 
 			reader := bytes.NewBuffer(nil)
 			if options.UseStats {
@@ -278,7 +274,6 @@ func CDownload(dir string, url string, options Options) bool {
 				fileWatcher.Comleted[i] = 1
 				fileWatcher.CompletedSum += 1
 			}
-			//remove(leftParts, i)
 
 		}(min, max, fileWatcher.Parts[j].Idx)
 
@@ -305,4 +300,18 @@ func remove(slice []Parts, s int64) []Parts {
 func writeFileHelperToDir(data Helper, path string) {
 	file, _ := json.MarshalIndent(data, "", " ")
 	_ = ioutil.WriteFile(path, file, 0644)
+}
+
+func min(a, b int64) int64 {
+	if a < b {
+		return a
+	}
+	return b
+}
+
+func max(a, b int64) int64 {
+	if a > b {
+		return a
+	}
+	return b
 }

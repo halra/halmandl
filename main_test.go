@@ -12,7 +12,6 @@ import (
 	"testing"
 )
 
-//TODO calc hash
 var mockString string
 
 func TestCDownloadWithRange(t *testing.T) {
