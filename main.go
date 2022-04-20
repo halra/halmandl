@@ -201,7 +201,11 @@ func CDownload(dir string, url string, options Options) bool {
 
 	for i := int64(0); i < limit; i++ {
 		if fileWatcher.Comleted[i] == 1 {
+			fileWatcher.CompletedSum += 1
 			continue
+		}
+		if fileWatcher.Failed[i] == 1 {
+			fileWatcher.FailedSum += 1
 		}
 		min := lenJunk * i       // byte range
 		max := lenJunk * (i + 1) // byte range
