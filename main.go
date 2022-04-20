@@ -142,7 +142,7 @@ func CDownload(dir string, url string, options Options) bool {
 
 	//Init stats
 	stats := &FileStats{Transfered: 0, Filename: file, Parts: int(limit), StartedAt: time.Now(), Size: length,
-		TargetDirectory: filepath, ConcurrentParts: options.ConcurrentParts, JunkSize: options.JunkSize, CompletedJunks: int64(0)}
+		TargetDirectory: filepath, ConcurrentParts: options.ConcurrentParts, JunkSize: options.JunkSize, CompletedJunks: fileWatcher.CompletedSum}
 
 	//stats:
 	type Result struct {
@@ -201,11 +201,7 @@ func CDownload(dir string, url string, options Options) bool {
 
 	for i := int64(0); i < limit; i++ {
 		if fileWatcher.Comleted[i] == 1 {
-			fileWatcher.CompletedSum += 1
 			continue
-		}
-		if fileWatcher.Failed[i] == 1 {
-			fileWatcher.FailedSum += 1
 		}
 		min := lenJunk * i       // byte range
 		max := lenJunk * (i + 1) // byte range
