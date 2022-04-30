@@ -74,6 +74,7 @@ func CDownload(dir string, inUrl string, options Options) bool {
 
 	//unescape url path
 	inUrl, _ = url.PathUnescape(inUrl)
+	inUrl, _ = url.QueryUnescape(inUrl)
 
 	//Params
 	options.ConcurrentParts = max(1, options.ConcurrentParts)
