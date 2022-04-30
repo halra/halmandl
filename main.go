@@ -7,6 +7,7 @@ import (
 	"io"
 	"io/ioutil"
 	"net/http"
+	"net/url"
 	"os"
 	"path"
 	"strconv"
@@ -69,7 +70,10 @@ func DownloadStandard(dir string, url string) {
 
 }
 
-func CDownload(dir string, url string, options Options) bool {
+func CDownload(dir string, inUrl string, options Options) bool {
+
+	//unescape url path
+	inUrl, _ = url.PathUnescape(inUrl)
 
 	//Params
 	options.ConcurrentParts = max(1, options.ConcurrentParts)
@@ -78,7 +82,7 @@ func CDownload(dir string, url string, options Options) bool {
 
 	var wg sync.WaitGroup
 
-	_, file := path.Split(url) // filename
+	_, file := path.Split(inUrl) // filename
 	filepath := path.Join(dir, file)
 
 	err := os.MkdirAll(dir, os.ModePerm) // create path if not exist
@@ -111,8 +115,8 @@ func CDownload(dir string, url string, options Options) bool {
 
 	length := int64(1)
 	limit := int64(1)
-	res, err := http.Head(url) // fetch required headers, we decide on the header if we use junks
-	if err == nil {            // Only do if header is present
+	res, err := http.Head(inUrl) // fetch required headers, we decide on the header if we use junks
+	if err == nil {              // Only do if header is present
 		contentLengthHeader := res.Header.Get("Content-Length")
 		if contentLengthHeader != "" {
 			length, _ = strconv.ParseInt(res.Header.Get("Content-Length"), 10, 64)
@@ -241,7 +245,7 @@ func CDownload(dir string, url string, options Options) bool {
 
 			stats.Junk = i
 			client := &http.Client{}
-			req, _ := http.NewRequest("GET", url, nil)
+			req, _ := http.NewRequest("GET", inUrl, nil)
 			if limit > 1 {
 				rangeHeader := "bytes=" + strconv.FormatInt(min, 10) + "-" + strconv.FormatInt(max, 10) // add header for junk size
 				req.Header.Add("Range", rangeHeader)
