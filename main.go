@@ -239,8 +239,7 @@ func CDownload(dir string, inUrl string, options Options) bool {
 			}(guard)
 			defer func(wg *sync.WaitGroup) {
 				// release wg semaphore
-				fileWatcher.PartsLen = int64(len(fileWatcher.Parts))
-				writeFileHelperToDir(fileWatcher, filewatcherFilename)
+
 				wg.Done()
 			}(&wg)
 
@@ -279,6 +278,8 @@ func CDownload(dir string, inUrl string, options Options) bool {
 				fileWatcher.Comleted[i] = 1
 				fileWatcher.CompletedSum += 1
 			}
+			fileWatcher.PartsLen = int64(len(fileWatcher.Parts))
+			writeFileHelperToDir(fileWatcher, filewatcherFilename)
 
 		}(min, max, fileWatcher.Parts[j].Idx)
 
