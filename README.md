@@ -16,7 +16,7 @@ A Go package for downloading files with support for concurrent downloads and res
 To use this package in your Go project, you can simply import it:
 
 ```go
-import "github.com/halra/go-file-downloader"
+import "github.com/halra/halmandl"
 ```
 
 Then, create a downloader instance and start downloading files.
@@ -33,7 +33,7 @@ if err != nil {
 
 ```go
 import (
-    "github.com/halra/go-file-downloader"
+    "github.com/halra/halmandl"
     "log"
 )
 
