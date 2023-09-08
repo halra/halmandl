@@ -3,28 +3,41 @@ package halmandl
 import (
 	"crypto/sha1"
 	"encoding/hex"
-	"io/ioutil"
 	"math/rand"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strconv"
 	"strings"
 	"testing"
 )
 
+func TestFoo(t *testing.T) {
+
+	downloader := NewDownloader()
+	downloader.Options.ConcurrentParts = 10
+	downloader.Options.UseStats = true
+
+	downloader.Download("C:\\Users\\ra\\Downloads\\ytDl", "https://ia802508.us.archive.org/16/items/microsoft_xbox360_s_part1/Silent%20Hill%20-%20Homecoming%20%28Germany%29%20%28En%2CFr%2CDe%2CEs%2CIt%29.zip")
+
+}
+
 var mockString string
 
 func TestCDownloadWithRange(t *testing.T) {
-
-	op := Options{JunkSize: 4194300, ConcurrentParts: 10, UseStats: true}
 
 	if mockString == "" {
 		mockString = RandStringRunes(123456789)
 	}
 
+	downloader := NewDownloader()
+	downloader.Options.ConcurrentParts = 10
+	downloader.Options.JunkSize = 4194300
+	downloader.Options.UseStats = true
+
 	origHash := getSha1([]byte(mockString))
-	Download("./", testServer.URL+"/f1.txt", op)
-	data, _ := ioutil.ReadFile("./f1.txt")
+	downloader.Download("./", testServer.URL+"/f1.txt")
+	data, _ := os.ReadFile("./f1.txt")
 	doHash := getSha1(data)
 	if origHash != doHash {
 		t.Logf("TestCDownloadWithRange failed with missmatched hash\n")
@@ -36,10 +49,14 @@ func TestCDownloadWithRangeBrokenServer(t *testing.T) {
 	if mockString == "" {
 		mockString = RandStringRunes(123456789)
 	}
-	op := Options{JunkSize: 219400, ConcurrentParts: 10, UseStats: true}
 	origHash := getSha1([]byte(mockString))
-	Download("./", testServerBroken.URL+"/f2.txt", op)
-	data, _ := ioutil.ReadFile("./f2.txt")
+	downloader := NewDownloader()
+	downloader.Options.ConcurrentParts = 10
+	downloader.Options.JunkSize = 219400
+	downloader.Options.UseStats = true
+
+	downloader.Download("./", testServerBroken.URL+"/f2.txt")
+	data, _ := os.ReadFile("./f2.txt")
 	doHash := getSha1(data)
 	if origHash != doHash {
 		t.Logf("TestCDownloadWithRangeBrokenServer failed with matching hash\n")
@@ -48,11 +65,16 @@ func TestCDownloadWithRangeBrokenServer(t *testing.T) {
 }
 
 func TestCDownloadNoRange(t *testing.T) {
-	op := Options{JunkSize: 4194300, ConcurrentParts: 5, UseStats: true}
 	mockString = RandStringRunes(123456789)
 	origHash := getSha1([]byte(mockString))
-	Download("./", testServerNoRange.URL+"/f3.txt", op)
-	data, _ := ioutil.ReadFile("./f3.txt")
+
+	downloader := NewDownloader()
+	downloader.Options.ConcurrentParts = 5
+	downloader.Options.JunkSize = 4194300
+	downloader.Options.UseStats = true
+
+	downloader.Download("./", testServerNoRange.URL+"/f3.txt")
+	data, _ := os.ReadFile("./f3.txt")
 	doHash := getSha1(data)
 	if origHash != doHash {
 		t.Logf("TestCDownloadWithRange failed\n")
@@ -61,11 +83,16 @@ func TestCDownloadNoRange(t *testing.T) {
 }
 
 func TestCDownloadSmallFiles(t *testing.T) {
-	op := Options{JunkSize: 5, ConcurrentParts: 5, UseStats: true}
 	mockString = RandStringRunes(1)
 	origHash := getSha1([]byte(mockString))
-	Download("./", testServer.URL+"/f4.txt", op)
-	data, _ := ioutil.ReadFile("./f4.txt")
+
+	downloader := NewDownloader()
+	downloader.Options.ConcurrentParts = 5
+	downloader.Options.JunkSize = 5
+	downloader.Options.UseStats = true
+
+	downloader.Download("./", testServer.URL+"/f4.txt")
+	data, _ := os.ReadFile("./f4.txt")
 	doHash := getSha1(data)
 	if origHash != doHash {
 		t.Logf("TestCDownloadWithRangeBrokenServer failed with missmatched hash\n")

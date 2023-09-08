@@ -3,9 +3,10 @@ package halmandl
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
+	"log"
 	"net/http"
 	"net/url"
 	"os"
@@ -14,6 +15,12 @@ import (
 	"strings"
 	"sync"
 	"time"
+)
+
+const (
+	defaultMaxTries        = 10
+	defaultJunkSize        = 4194304 // 4 MB
+	defaultConcurrentParts = 1
 )
 
 type Parts struct {
@@ -56,34 +63,58 @@ type Options struct {
 	MaxTries        int
 }
 
-func Download(dir string, url string, options Options) {
-	maxTries := max(10, int64(options.MaxTries))
-	for maxTries > 0 {
-		if CDownload(dir, url, options) {
-			return
-		}
-		maxTries -= 1
+// Downloader represents a file downloader.
+type Downloader struct {
+	Options Options
+	logger  *log.Logger
+}
+
+// NewDownloader creates a new downloader with default options.
+func NewDownloader() *Downloader {
+	return &Downloader{
+		Options: Options{
+			MaxTries:        defaultMaxTries,
+			JunkSize:        defaultJunkSize,
+			ConcurrentParts: defaultConcurrentParts,
+		},
+		logger: log.New(os.Stdout, "", log.LstdFlags),
 	}
+}
+
+// SetLogger sets the logger for the downloader.
+func (d *Downloader) SetLogger(logger *log.Logger) {
+	d.logger = logger
+}
+
+// Download initiates the file download with the given URL and directory.
+func (d *Downloader) Download(dir string, url string) error {
+	for d.Options.MaxTries > 0 {
+		if err := d.cDownload(dir, url); err == nil {
+			return err
+		}
+		d.Options.MaxTries--
+	}
+	return errors.New("maximum download retries exceeded")
 }
 
 func DownloadStandard(dir string, url string) {
 
 }
 
-func CDownload(dir string, inUrl string, options Options) bool {
+func (d *Downloader) cDownload(dir string, inURL string) error {
 
 	//unescape url path
-	inUrl, _ = url.PathUnescape(inUrl)
-	inUrl, _ = url.QueryUnescape(inUrl)
+	inURL, _ = url.PathUnescape(inURL)
+	inURL, _ = url.QueryUnescape(inURL)
 
 	//Params
-	options.ConcurrentParts = max(1, options.ConcurrentParts)
-	options.JunkSize = max(4194304, options.JunkSize)
+	d.Options.ConcurrentParts = max(1, d.Options.ConcurrentParts)
+	d.Options.JunkSize = max(4194304, d.Options.JunkSize)
 	//End Params
 
 	var wg sync.WaitGroup
 
-	_, file := path.Split(inUrl) // filename
+	_, file := path.Split(inURL) // filename
 	filepath := path.Join(dir, file)
 
 	err := os.MkdirAll(dir, os.ModePerm) // create path if not exist
@@ -95,7 +126,7 @@ func CDownload(dir string, inUrl string, options Options) bool {
 	f, err := os.OpenFile(filepath, os.O_RDWR|os.O_CREATE, 0666)
 	if err != nil {
 		fmt.Println(err)
-		return false
+		return err
 	}
 	defer f.Close()
 
@@ -108,15 +139,15 @@ func CDownload(dir string, inUrl string, options Options) bool {
 	fileWatcher := Helper{}
 	//Set values from last dl if we find any
 	if err = jsonParser.Decode(&fileWatcher); err != nil {
-		fileWatcher.Options = options
+		fileWatcher.Options = d.Options
 	} else {
-		options = fileWatcher.Options
+		d.Options = fileWatcher.Options
 	}
 	//writeFileHelperToDir(fileWatcher, filewatcherFilename)
 
 	length := int64(1)
 	limit := int64(1)
-	res, err := http.Head(inUrl) // fetch required headers, we decide on the header if we use junks
+	res, err := http.Head(inURL) // fetch required headers, we decide on the header if we use junks
 	if err == nil {              // Only do if header is present
 		contentLengthHeader := res.Header.Get("Content-Length")
 		if contentLengthHeader != "" {
@@ -125,8 +156,8 @@ func CDownload(dir string, inUrl string, options Options) bool {
 		acceptRange := res.Header.Get("Accept-Ranges") // check if we can use a concurrent strategie
 		//fmt.Println("Accept-Ranges", acceptRange)
 		if strings.Contains(acceptRange, "bytes") {
-			limit = length / int64(options.JunkSize) // split in junks of n bytes
-			if limit == 0 {                          // handle small files, files < junksize
+			limit = length / int64(d.Options.JunkSize) // split in junks of n bytes
+			if limit == 0 {                            // handle small files, files < junksize
 				limit = 1
 			}
 		}
@@ -138,16 +169,16 @@ func CDownload(dir string, inUrl string, options Options) bool {
 		fileWatcher.Failed = make([]int64, limit)
 	}
 
-	lenJunk := length / limit                             // Bytes for each Go-routine
-	diff := length % limit                                //  the remaining for the last junk
-	guard := make(chan struct{}, options.ConcurrentParts) // semaphore for concurrent requests
+	lenJunk := length / limit                               // Bytes for each Go-routine
+	diff := length % limit                                  //  the remaining for the last junk
+	guard := make(chan struct{}, d.Options.ConcurrentParts) // semaphore for concurrent requests
 	defer func() {
 		close(guard)
 	}()
 
 	//Init stats
 	stats := &FileStats{Transfered: 0, Filename: file, Parts: int(limit), StartedAt: time.Now(), Size: length,
-		TargetDirectory: filepath, ConcurrentParts: options.ConcurrentParts, JunkSize: options.JunkSize, CompletedJunks: fileWatcher.CompletedSum}
+		TargetDirectory: filepath, ConcurrentParts: d.Options.ConcurrentParts, JunkSize: d.Options.JunkSize, CompletedJunks: fileWatcher.CompletedSum}
 
 	//stats:
 	type Result struct {
@@ -245,7 +276,7 @@ func CDownload(dir string, inUrl string, options Options) bool {
 
 			stats.Junk = i
 			client := &http.Client{}
-			req, _ := http.NewRequest("GET", inUrl, nil)
+			req, _ := http.NewRequest("GET", inURL, nil)
 			if limit > 1 {
 				rangeHeader := "bytes=" + strconv.FormatInt(min, 10) + "-" + strconv.FormatInt(max, 10) // add header for junk size
 				req.Header.Add("Range", rangeHeader)
@@ -253,6 +284,7 @@ func CDownload(dir string, inUrl string, options Options) bool {
 			resp, err := client.Do(req)
 			if err != nil {
 				fmt.Println(err)
+				return
 			}
 			defer resp.Body.Close()
 
@@ -265,7 +297,7 @@ func CDownload(dir string, inUrl string, options Options) bool {
 			//fmt.Println(resp.StatusCode)
 
 			reader := bytes.NewBuffer(nil)
-			if options.UseStats {
+			if d.Options.UseStats {
 				startTransaction <- Result{id: i, bytes: reader}
 			}
 			_, err = io.Copy(reader, resp.Body)
@@ -289,14 +321,15 @@ func CDownload(dir string, inUrl string, options Options) bool {
 	for i := 0; i < len(fileWatcher.Parts); i++ {
 		if fileWatcher.Comleted[i] == int64(0) {
 			writeFileHelperToDir(fileWatcher, filewatcherFilename)
-			return false
+			return errors.New("fileWatcher is not completed")
+
 		}
 	}
 
 	fileWatcher.AllComplete = true
 	// release wg semaphore
 	writeFileHelperToDir(fileWatcher, filewatcherFilename)
-	return fileWatcher.AllComplete
+	return nil
 }
 
 func remove(slice []Parts, s int64) []Parts {
@@ -305,7 +338,7 @@ func remove(slice []Parts, s int64) []Parts {
 
 func writeFileHelperToDir(data Helper, path string) {
 	file, _ := json.MarshalIndent(data, "", " ")
-	_ = ioutil.WriteFile(path, file, 0644)
+	_ = os.WriteFile(path, file, 0644)
 }
 
 func min(a, b int64) int64 {
