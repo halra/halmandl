@@ -301,6 +301,11 @@ func (d *Downloader) cDownload(dir string, inURL string) error {
 				startTransaction <- Result{id: i, bytes: reader}
 			}
 			_, err = io.Copy(reader, resp.Body)
+			if err != nil {
+				fileWatcher.Failed[i] = 1
+				fileWatcher.FailedSum += 1
+				return
+			}
 			written, err := f.WriteAt(reader.Bytes(), int64(min))
 			endTransaction <- i
 			if err != nil || written == 0 {
