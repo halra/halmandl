@@ -324,8 +324,9 @@ func (d *Downloader) cDownload(dir string, inURL string) error {
 	wg.Wait()
 
 	for i := 0; i < len(fileWatcher.Parts); i++ {
-		if fileWatcher.Comleted[i] == int64(0) {
+		if fileWatcher.Comleted[i] != int64(1) {
 			writeFileHelperToDir(fileWatcher, filewatcherFilename)
+			fmt.Printf("Checked  all parts of file -> OK\n")
 			return errors.New("fileWatcher is not completed")
 
 		}
