@@ -276,14 +276,22 @@ func (d *Downloader) cDownload(dir string, inURL string) error {
 
 			stats.Junk = i
 			client := &http.Client{}
-			req, _ := http.NewRequest("GET", inURL, nil)
+			req, err := http.NewRequest("GET", inURL, nil)
+			if err != nil {
+				fmt.Println(err)
+				return
+			}
 			if limit > 1 {
 				rangeHeader := "bytes=" + strconv.FormatInt(min, 10) + "-" + strconv.FormatInt(max, 10) // add header for junk size
-				req.Header.Add("Range", rangeHeader)
+				if rangeHeader != "" {
+					req.Header.Add("Range", rangeHeader)
+				} else {
+					fmt.Printf("WARN Range was not fetched\n")
+				}
 			}
 			resp, err := client.Do(req)
 			if err != nil {
-				fmt.Println(err)
+				fmt.Printf("ERROR on client.Do %v\n", err)
 				return
 			}
 			defer resp.Body.Close()
